@@ -1,0 +1,15 @@
+tensorflow==2.20.0
+
+numpy
+pandas
+matplotlib
+seaborn
+scikit-learn
+
+pillow
+opencv-python-headless
+
+tqdm
+
+jupyterlab
+ipykernel
