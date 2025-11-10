@@ -1,6 +1,3 @@
-Baik, kita putar kaset **PHASE 7** lagi. Ini isi `README.md` lengkap, tinggal tempel di file `README.md` di root project.
-
-````markdown
 # Klasifikasi Gambar SIMPLIcity dengan CNN
 
 Proyek ini adalah praktikum image classification menggunakan **Convolutional Neural Network (CNN)** pada dataset **SIMPLIcity** (1000 gambar, 10 kelas semantik).  
