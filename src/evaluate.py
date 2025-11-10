@@ -6,19 +6,19 @@ Evaluasi model CNN SIMPLIcity pada test set.
 Fitur:
 1. Load best model (berdasarkan val_accuracy) dari outputs/models.
 2. Hitung:
-   - test_loss
-   - test_accuracy
-   - error_ratio = 1 - test_accuracy
+    - test_loss
+    - test_accuracy
+    - error_ratio = 1 - test_accuracy
 3. Bangun dan simpan confusion matrix 10x10 sebagai PNG.
 4. Visualisasi beberapa contoh prediksi:
-   - gambar
-   - true label
-   - predicted label
-   - top-3 probabilitas softmax
+    - gambar
+    - true label
+    - predicted label
+    - top-3 probabilitas softmax
 """
 
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -32,12 +32,25 @@ from . import dataset
 from . import utils
 
 
+# --- PERUBAHAN DI SINI ---
+# Menggunakan nama kelas yang sesuai dengan dataset SIMPLIcity
 def _get_class_names() -> List[str]:
     """
-    Karena dataset flat, kita pakai nama kelas generik:
-    class_0, class_1, ..., class_9.
+    Mengembalikan nama kelas aktual sesuai mapping dataset.
+    Indeks 0 -> 'People', Indeks 1 -> 'Beach', ...
     """
-    return [f"class_{i}" for i in range(config.NUM_CLASSES)]
+    return [
+        "People",     # 0-99
+        "Beach",      # 100-199
+        "Building",   # 200-299
+        "Bus",        # 300-399
+        "Dinosaur",   # 400-499
+        "Elephant",   # 500-599
+        "Flower",     # 600-699
+        "Horse",      # 700-799
+        "Mountain",   # 800-899
+        "Food",       # 900-999
+    ]
 
 
 def load_best_model() -> tf.keras.Model:
@@ -123,13 +136,14 @@ def build_confusion_matrix(
 
     cm = confusion_matrix(y_true, y_pred, labels=list(range(config.NUM_CLASSES)))
 
+    # Menggunakan nama kelas yang sudah diperbarui
     class_names = _get_class_names()
 
     # Plot confusion matrix
     utils.ensure_directories()
     save_path.parent.mkdir(parents=True, exist_ok=True)
 
-    plt.figure(figsize=(8, 6))
+    plt.figure(figsize=(10, 8)) # Sedikit lebih besar untuk nama kelas
     sns.heatmap(
         cm,
         annot=True,
@@ -141,6 +155,8 @@ def build_confusion_matrix(
     plt.xlabel("Predicted")
     plt.ylabel("True")
     plt.title("Confusion Matrix - Test Set")
+    plt.xticks(rotation=45, ha="right")
+    plt.yticks(rotation=0)
     plt.tight_layout()
     plt.savefig(save_path)
     plt.close()
@@ -156,6 +172,7 @@ def visualize_sample_predictions(
 ) -> None:
     """
     Visualisasi beberapa contoh prediksi dari test set.
+    Modifikasi: Mencari sampel dari kelas yang berbeda.
 
     - Menampilkan grid gambar (misal 3x3)
     - Title tiap gambar:
@@ -167,7 +184,7 @@ def visualize_sample_predictions(
     model : tf.keras.Model
         Model terlatih.
     num_examples : int
-        Jumlah contoh yang divisualisasikan (maks 16 disarankan).
+        Jumlah contoh yang divisualisasikan (maks 10).
     save_path : Path
         Lokasi file PNG. Jika None, simpan sebagai 'sample_predictions_test.png'
         di folder figures.
@@ -175,18 +192,44 @@ def visualize_sample_predictions(
     if save_path is None:
         save_path = Path(config.FIGURE_DIR) / "sample_predictions_test.png"
     save_path = Path(save_path)
+    
+    # Batasi num_examples agar tidak melebihi jumlah kelas
+    if num_examples > config.NUM_CLASSES:
+        print(f"Warning: num_examples dibatasi ke {config.NUM_CLASSES} (jumlah kelas).")
+        num_examples = config.NUM_CLASSES
 
-    print(f"==> Visualizing {num_examples} sample predictions...")
+    print(f"==> Visualizing {num_examples} sample predictions (mencari kelas berbeda)...")
     test_ds = dataset.get_test_dataset(batch_size=config.BATCH_SIZE)
 
-    # unbatch supaya bisa ambil N contoh
-    test_unbatched = test_ds.unbatch().take(num_examples)
+    # --- PERUBAHAN DI SINI ---
+    # unbatch dan cari 1 sampel per kelas, sampai num_examples terpenuhi
+    test_unbatched = test_ds.unbatch()
 
     images_list = []
     labels_list = []
+    
+    # {class_id: (img_tensor, label_tensor)}
+    samples_found: Dict[int, Tuple[np.ndarray, np.ndarray]] = {} 
+
+    # Iterasi dataset untuk mencari 1 sampel per kelas
     for img, label in test_unbatched:
-        images_list.append(img.numpy())
-        labels_list.append(label.numpy())
+        class_id = int(tf.argmax(label).numpy())
+        
+        # Jika kelas ini belum ditemukan, simpan
+        if class_id not in samples_found:
+            samples_found[class_id] = (img.numpy(), label.numpy())
+        
+        # Jika sudah terkumpul N sampel (sesuai num_examples)
+        if len(samples_found) >= num_examples:
+            break
+
+    # Urutkan berdasarkan class_id agar tampilannya konsisten
+    # dan ambil hanya num_examples pertama jika kita menemukan lebih
+    sorted_keys = sorted(samples_found.keys())[:num_examples]
+    for i in sorted_keys:
+        images_list.append(samples_found[i][0])
+        labels_list.append(samples_found[i][1])
+    # --- AKHIR PERUBAHAN LOGIKA PENGAMBILAN GAMBAR ---
 
     if not images_list:
         print("Tidak ada data di test set untuk divisualisasikan.")
@@ -200,16 +243,17 @@ def visualize_sample_predictions(
     true_classes = np.argmax(labels_arr, axis=1)
     pred_classes = np.argmax(probs, axis=1)
 
+    # Menggunakan nama kelas yang sudah diperbarui
     class_names = _get_class_names()
 
-    # grid: sebisa mungkin square (misal 3x3, 4x4)
+    # grid: sebisa mungkin square (misal 3x3 untuk 9 gambar)
     n = len(images_arr)
     grid_size = int(np.ceil(np.sqrt(n)))
 
     utils.ensure_directories()
     save_path.parent.mkdir(parents=True, exist_ok=True)
 
-    plt.figure(figsize=(3 * grid_size, 3 * grid_size))
+    plt.figure(figsize=(3 * grid_size, 3.5 * grid_size)) # Tambah tinggi untuk title
 
     for i in range(n):
         ax = plt.subplot(grid_size, grid_size, i + 1)
@@ -224,12 +268,15 @@ def visualize_sample_predictions(
 
         # top-3 probabilitas
         top3_idx = np.argsort(probs[i])[-3:][::-1]
-        top3_info = ", ".join(
-            [f"{class_names[j]} ({probs[i][j]*100:.1f}%)" for j in top3_idx]
+        top3_info = "\n".join( # Ganti jadi newline
+            [f"- {class_names[j]} ({probs[i][j]*100:.1f}%)" for j in top3_idx]
         )
 
-        title = f"T: {class_names[true_id]}\nP: {class_names[pred_id]}\n{top3_info}"
-        ax.set_title(title, fontsize=8)
+        title = f"True: {class_names[true_id]}\nPred: {class_names[pred_id]}\n---\n{top3_info}"
+        
+        # Beri warna title
+        color = "green" if true_id == pred_id else "red"
+        ax.set_title(title, fontsize=8, color=color, loc='left')
 
     plt.tight_layout()
     plt.savefig(save_path)
@@ -259,12 +306,12 @@ def main() -> None:
     cm = build_confusion_matrix(model)
 
     print("\n==> Visualizing sample predictions...")
-    visualize_sample_predictions(model, num_examples=9)
+    visualize_sample_predictions(model, num_examples=9) # Ambil 9 kelas berbeda
 
     print("\nRingkasan:")
-    print(f"- Test loss     : {test_loss:.4f}")
-    print(f"- Test accuracy : {test_acc:.4f}")
-    print(f"- Error ratio   : {error_ratio:.4f}")
+    print(f"- Test loss      : {test_loss:.4f}")
+    print(f"- Test accuracy  : {test_acc:.4f}")
+    print(f"- Error ratio    : {error_ratio:.4f}")
     print(f"- Confusion matrix shape: {cm.shape}")
 
 

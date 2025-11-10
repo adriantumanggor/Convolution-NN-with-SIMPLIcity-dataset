@@ -28,7 +28,6 @@ data/SIMPLIcity/test/
 data/SIMPLIcity/validation/
 
 # Outputs
-outputs/
 *.pth
 *.pt
 *.ckpt
